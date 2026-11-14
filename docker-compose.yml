@@ -1,0 +1,68 @@
+# TODO: Armar el docker-compose.yml siguiendo las reglas del contrato y Anexo Entrega 1:
+# - Red externa: planta-lan (external: true)
+# - Label en servicios de planta: academia.planta: pc
+# - Límites de recursos entre todos los servicios de planta: máx 4 CPUs y 8 GB de RAM
+# - Variables de proxy: HTTP_PROXY=http://enlace:3128, HTTPS_PROXY=http://enlace:3128, NO_PROXY=broker,sim,localhost,postgres
+# - Servicio de base de datos PostgreSQL 16 con pgvector (imagen pgvector/pgvector:pg16)
+
+name: sistema
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    networks: [planta-lan]
+    labels:
+      - academia.planta=pc
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-planta}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-planta_secret}
+      - POSTGRES_DB=${POSTGRES_DB:-planta_db}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-planta} -d ${POSTGRES_DB:-planta_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 2G
+
+  sistem_agent:
+    build: .
+    networks: [planta-lan]
+    labels:
+      - academia.planta=pc
+    environment:
+      - SISTEMA_NOMBRE=${SISTEMA_NOMBRE:-agustin-volpe}
+      - MQTT_HOST=${MQTT_HOST:-broker}
+      - MQTT_PORT=${MQTT_PORT:-1883}
+      - SIM_URL=${SIM_URL:-http://sim:8100}
+      - DATABASE_URL=${DATABASE_URL:-postgresql+psycopg://planta:planta_secret@postgres:5432/planta_db}
+      - HTTP_PROXY=${PLANTA_HTTP_PROXY:-http://enlace:3128}
+      - HTTPS_PROXY=${PLANTA_HTTPS_PROXY:-http://enlace:3128}
+      - NO_PROXY=${PLANTA_NO_PROXY:-broker,sim,localhost,127.0.0.1,postgres,ollama,mcp,host.docker.internal,enlace}
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      - LLM_LOCAL_MODEL=${LLM_LOCAL_MODEL:-hf.co/mistralai/Ministral-3-3B-Instruct-2512-GGUF:Q4_K_M}
+      - WHISPER_MODEL_SIZE=${WHISPER_MODEL_SIZE:-small}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '3'
+          memory: 6G
+
+networks:
+  planta-lan:
+    external: true
+
+volumes:
+  postgres_data:
