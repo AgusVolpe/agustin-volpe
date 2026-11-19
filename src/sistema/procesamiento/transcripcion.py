@@ -37,16 +37,31 @@ class TranscriptorLocal:
         if self._modelo is None:
             from faster_whisper import WhisperModel
 
-            root = self.download_root if Path(self.download_root).exists() else None
-            log.info("Cargando modelo faster-whisper '%s' en CPU (int8)...", self.model_size)
+            root_path = Path(self.download_root)
+            usar_local = root_path.exists() and any(root_path.iterdir())
+            root = str(root_path) if usar_local else None
+            log.info(
+                "Cargando modelo faster-whisper '%s' en CPU (int8, local_files_only=%s)...",
+                self.model_size,
+                usar_local,
+            )
             self._modelo = WhisperModel(
                 self.model_size,
                 device="cpu",
                 compute_type="int8",
-                cpu_threads=3,
+                cpu_threads=2,
                 download_root=root,
+                local_files_only=usar_local,
             )
         return self._modelo
+
+    def precargar(self) -> None:
+        """Precarga los pesos locales de faster-whisper al arrancar (100% offline)."""
+        try:
+            self._asegurar_modelo()
+            log.info("Modelo faster-whisper precargado en memoria.")
+        except Exception as e:
+            log.warning("No se pudo precargar faster-whisper al inicio: %s", e)
 
     def transcribir_wav_bytes(self, wav_bytes: bytes) -> str:
         """Transcribe bytes WAV 16kHz mono a texto."""

@@ -10,13 +10,17 @@ RUN git clone --depth 1 https://github.com/NovitSoftware/academia2026-tp.git /tm
     && cp /tmp/tp/datos/materiales.yaml /tmp/tp/datos/planta.yaml /tmp/tp/datos/documentos/fragmentos.jsonl /tmp/tp/datos/documentos/evaluacion/retrieval.json /opt/planta_datos/ \
     && rm -rf /tmp/tp
 
-# Copiar el código local e instalar el paquete junto con dependencias de test
 WORKDIR /app
+
+# Instalar dependencias y pre-descargar faster-whisper ANTES de copiar el código fuente
+# para aprovechar la caché de capas de Docker en cada rebuild de desarrollo
+COPY pyproject.toml README.md ./
+RUN mkdir -p src/sistema && touch src/sistema/__init__.py \
+    && pip install --no-cache-dir ".[dev]" \
+    && python -c "from faster_whisper import WhisperModel; WhisperModel('small', device='cpu', compute_type='int8', download_root='/opt/whisper')"
+
+# Copiar el código fuente local e instalar el paquete sin reinstalar dependencias
 COPY . .
-RUN pip install ".[dev]"
+RUN pip install --no-cache-dir --no-deps .
 
-# Pre-descargar el modelo faster-whisper en la imagen para que funcione 100% offline sin depender del enlace
-RUN python -c "from faster_whisper import WhisperModel; WhisperModel('small', device='cpu', compute_type='int8', download_root='/opt/whisper')"
-
-# Definir el comando de arranque
 CMD ["python", "-m", "sistema.agente"]

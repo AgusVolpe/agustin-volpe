@@ -290,21 +290,36 @@ class ProcesadorParteVoz:
                 idx = texto_norm.index(corte)
                 texto_norm = texto_norm[:idx].strip()
 
-        oraciones = [o.strip() for o in re.split(r"[.;]+", texto_norm) if o.strip()]
+        # Normalizar errores fonéticos frecuentes de Whisper en español de planta
+        texto_norm = re.sub(r"\bambien\b", "tambien", texto_norm)
+        texto_norm = re.sub(r"\bfitro\b", "filtro", texto_norm)
+        texto_norm = re.sub(
+            r"\b(filtro\s+[ab]|primario|secundario|izquierda|derecha|rodamiento)\s+medio\b",
+            r"\1 me dio",
+            texto_norm,
+        )
+        # Proteger comas decimales (1,4) y frases compuestas ("parada, en reserva") antes de dividir cláusulas
+        texto_div = re.sub(r"(?<=\d),(?=\d)", ".", texto_norm)
+        texto_div = re.sub(r"\bparada,\s*en\s+reserva\b", "parada en reserva", texto_div)
+        texto_div = re.sub(r"\bdisparada,\s*no\s+arranca\b", "disparada no arranca", texto_div)
+
+        oraciones = [o.strip() for o in re.split(r"[.;,]+", texto_div) if o.strip()]
         filas: list[FilaParte] = []
         ambiguedad_detectada: dict[str, Any] | None = None
         opciones_tablet: list[str] = []
         pregunta_tablet: str | None = None
 
-        ultimo_tag: str | None = tag_forzado
+        ultimo_tag: str | None = None
 
         for oracion in oraciones:
-            # Limpiar muletillas y conectores al inicio de la oración
+            # Limpiar muletillas y conectores al inicio de la oración (incluso encadenados)
             oracion_limpia = re.sub(
-                r"^(bueno|eh|a ver|listo|este|bien|ah y|despues|tambien|ademas)\b[,\s]*",
+                r"^(?:(?:bueno|eh|a ver|listo|este|bien|ah y|ah|y|despues|tambien|ademas)\b[\s]*)+",
                 "",
                 oracion,
             ).strip()
+            if not oracion_limpia:
+                continue
 
             tag, es_amb, dicho_amb = self._identificar_equipo_en_oracion(oracion_limpia)
             if es_amb and tag_forzado:
@@ -641,14 +656,18 @@ class ProcesadorParteVoz:
 
             # Corrección de equipo ("Eso de ciento doce era de la uno, no de la dos")
             elif "era de " in oracion and ", no de " in oracion:
+                val_ref, _ = extraer_numero_hablado(oracion.split("era de ", 1)[0])
                 parte_corr = oracion.split("era de ", 1)[1]
                 tag_real, _, _ = self._identificar_equipo_en_oracion(parte_corr.split(", no de")[0])
                 tag_mal, _, _ = self._identificar_equipo_en_oracion(parte_corr.split(", no de")[1])
                 if tag_real and tag_mal:
                     for f in nuevas:
-                        if f.tag == tag_mal:
+                        if f.tag == tag_mal and (
+                            val_ref is None or (f.valor is not None and abs(f.valor - val_ref) < 0.2)
+                        ):
                             f.tag = tag_real
                             if f.variable == "presion_descarga_local":
                                 f.unidad = self._extraer_unidad_presion("", tag_real)
+                            break
 
         return False, nuevas

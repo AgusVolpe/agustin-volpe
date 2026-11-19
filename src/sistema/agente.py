@@ -73,7 +73,8 @@ class AgentePlanta:
         self.indexador_rag.indexar_en_postgres()
         self.buscador_rag = BuscadorRAG(indexador=self.indexador_rag)
         self.context_builder = ContextBuilderAnomalias(tools=self.tools, buscador_rag=self.buscador_rag)
-        log.info("Componentes de dominio, voz, persistencia y RAG inicializados.")
+        self.transcriptor.precargar()
+        log.info("Componentes de dominio, voz, persistencia, RAG y STT inicializados.")
 
     def encolar_mensaje(self, topico: str, payload: dict) -> None:
         if "ts" in payload and payload["ts"]:
