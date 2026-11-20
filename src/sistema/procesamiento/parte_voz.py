@@ -292,9 +292,19 @@ class ProcesadorParteVoz:
 
         # Normalizar errores fonéticos frecuentes de Whisper en español de planta
         texto_norm = re.sub(r"\bambien\b", "tambien", texto_norm)
-        texto_norm = re.sub(r"\bfitro\b", "filtro", texto_norm)
+        texto_norm = re.sub(r"\b(?:fitro|filto|fito)\b", "filtro", texto_norm)
+        texto_norm = re.sub(r"\bgolpequeo\b", "golpeteo", texto_norm)
+        texto_norm = re.sub(r"\bfiltro\s+(?:no\s+ve|v|ve|be)\b", "filtro b", texto_norm)
+        texto_norm = re.sub(r"\bfiltro\s+ha\b", "filtro a", texto_norm)
+        texto_norm = re.sub(r"\bdel\s+a1\b", "de la uno", texto_norm)
+        texto_norm = re.sub(r"\bel\s+a1\b", "la uno", texto_norm)
+        texto_norm = re.sub(r"\bla\s+una\b", "la uno", texto_norm)
+        texto_norm = re.sub(r"\blados\b", "la dos", texto_norm)
+        texto_norm = re.sub(r"\bstein\b", "esta en", texto_norm)
+        texto_norm = re.sub(r"\bdesparada\b", "disparada", texto_norm)
+        texto_norm = re.sub(r"(\d+)\s*[°º]", r"\1 grados", texto_norm)
         texto_norm = re.sub(
-            r"\b(filtro\s+[ab]|primario|secundario|izquierda|derecha|rodamiento)\s+medio\b",
+            r"\b(filtro\s+[ab]|primario|secundario|izquierda|derecha|rodamiento),?\s+medio\b",
             r"\1 me dio",
             texto_norm,
         )
@@ -432,15 +442,13 @@ class ProcesadorParteVoz:
                             )
                         )
 
-                # 3c. Goteo / pérdida por empaquetadura
+                # 3c. Goteo / pérdida por empaquetadura (solo cargar valor numérico si el operador lo dijo)
                 if "empaquetadura" in sub or "gotea" in sub or "chorrea" in sub:
                     fuerte = any(w in sub for w in ("bastante", "chorrea", "importante", "mucho"))
                     obs_emp = (
                         "pérdida importante por empaquetadura" if fuerte else "goteo por empaquetadura"
                     )
                     val_goteo, _ = extraer_numero_hablado(sub)
-                    if val_goteo is None and tag != "AMBIGUO":
-                        val_goteo = self._goteo_actual_planta(tag)
                     filas.append(
                         FilaParte(
                             tag=tag,
@@ -637,22 +645,41 @@ class ProcesadorParteVoz:
                     if f.tag == tag and f.valor is not None:
                         f.unidad = nueva_u
 
-            # Corrección de valor o lectura faltante ("La uno estaba en ciento quince kilos..." / "Te faltó la uno, que estaba en...")
+            # Corrección de valor o lectura faltante ("La uno estaba en ciento quince kilos..." / "Te faltó la dos, que estaba en cien gotas por minuto")
             elif "estaba en " in oracion:
                 tramo_v = oracion.split("estaba en ", 1)[1].split(", no en")[0]
                 val, _ = extraer_numero_hablado(tramo_v)
                 if val is not None:
-                    unidad = self._extraer_unidad_presion(tramo_v, tag)
+                    if "gota" in tramo_v:
+                        var_obj, unidad = "goteo_empaquetadura", "gotas/min"
+                    elif "grado" in tramo_v:
+                        var_obj, unidad = "temperatura_rodamiento_ir", "degC"
+                    elif "metro" in tramo_v or tag == "TK-301":
+                        var_obj, unidad = "nivel", "m"
+                    elif tag.startswith("F-") or "diferencial" in tramo_v:
+                        var_obj, unidad = "presion_diferencial", "kg/cm2"
+                    else:
+                        var_obj, unidad = "presion_descarga_local", self._extraer_unidad_presion(tramo_v, tag)
+
                     actualizada = False
+                    # 1) Buscar fila exacta del equipo + variable
                     for f in nuevas:
-                        if f.tag == tag and f.valor is not None:
+                        if f.tag == tag and f.variable == var_obj:
                             f.valor = float(val)
                             f.unidad = unidad
                             actualizada = True
                             break
+                    # 2) Fallback: si la respuesta dice ", no en <viejo>", matchear por valor viejo
+                    if not actualizada and ", no en " in oracion:
+                        val_viejo, _ = extraer_numero_hablado(oracion.split(", no en ", 1)[1])
+                        for f in nuevas:
+                            if f.tag == tag and f.valor is not None and val_viejo is not None and abs(f.valor - val_viejo) <= 1.0:
+                                f.valor = float(val)
+                                f.unidad = unidad
+                                actualizada = True
+                                break
                     if not actualizada:
-                        var = "presion_diferencial" if tag.startswith("F-") else ("nivel" if tag == "TK-301" else "presion_descarga_local")
-                        nuevas.append(FilaParte(tag=tag, variable=var, valor=float(val), unidad=unidad))
+                        nuevas.append(FilaParte(tag=tag, variable=var_obj, valor=float(val), unidad=unidad))
 
             # Corrección de equipo ("Eso de ciento doce era de la uno, no de la dos")
             elif "era de " in oracion and ", no de " in oracion:

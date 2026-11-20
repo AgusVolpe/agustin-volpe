@@ -1,0 +1,10 @@
+FROM ollama/ollama:latest
+
+# Pre-descargar qwen2.5:3b (~1.9 GB) dentro de la imagen para que:
+# 1) Funcione 100% offline dentro de planta-lan aunque el enlace esté caído.
+# 2) Sobreviva a `docker compose down -v` que ejecuta corregir.py entre escenarios.
+RUN ollama serve & \
+    pid=$! && \
+    for i in $(seq 1 30); do ollama list >/dev/null 2>&1 && break; sleep 1; done && \
+    ollama pull qwen2.5:3b && \
+    kill $pid && wait $pid || true

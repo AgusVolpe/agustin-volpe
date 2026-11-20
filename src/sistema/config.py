@@ -16,10 +16,20 @@ class Settings(BaseSettings):
     # Base de datos
     database_url: str = "postgresql+psycopg://planta:planta_secret@postgres:5432/planta_db"
 
-    # Modelos locales
-    ollama_base_url: str = "http://host.docker.internal:11434"
-    llm_local_model: str = "hf.co/mistralai/Ministral-3-3B-Instruct-2512-GGUF:Q4_K_M"
+    # Modelos locales (PC de planta - 100% offline)
+    ollama_base_url: str = "http://ollama:11434"
+    llm_local_model: str = "qwen2.5:3b"
     whisper_model_size: str = "small"
+
+    # Modelos en la nube (NVIDIA NIM - Visión multimodal saliendo por enlace:3128)
+    nvidia_api_key: str = ""
+    nvidia_base_url: str = "https://integrate.api.nvidia.com/v1"
+    vlm_model: str = "google/gemma-4-31b-it"
+    vlm_fallback_model: str = "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"
+    nvidia_timeout_s: float = 25.0
+
+    # Interfaz humana (FastAPI para planificador, supervisor e inspector)
+    api_ui_port: int = 8090
 
     # Tiempos y presupuestos (1.4 Control)
     latido_intervalo_s: int = 25          # < 30s para margen seguro con el corrector (máx 60s)

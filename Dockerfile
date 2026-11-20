@@ -7,7 +7,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends git ffmpeg buil
 RUN git clone --depth 1 https://github.com/NovitSoftware/academia2026-tp.git /tmp/tp \
     && pip install /tmp/tp/contrato \
     && mkdir -p /opt/planta_datos \
-    && cp /tmp/tp/datos/materiales.yaml /tmp/tp/datos/planta.yaml /tmp/tp/datos/documentos/fragmentos.jsonl /tmp/tp/datos/documentos/evaluacion/retrieval.json /opt/planta_datos/ \
+    && cp /tmp/tp/datos/materiales.yaml /tmp/tp/datos/planta.yaml /tmp/tp/datos/documentos/fragmentos.jsonl /tmp/tp/datos/documentos/evaluacion/retrieval.json /tmp/tp/datos/documentos/contrato/cierres_ejemplo.json /opt/planta_datos/ \
     && rm -rf /tmp/tp
 
 WORKDIR /app

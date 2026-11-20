@@ -1,10 +1,9 @@
-# TODO: Armar el docker-compose.yml siguiendo las reglas del contrato y Anexo Entrega 1:
-# - Red externa: planta-lan (external: true)
-# - Label en servicios de planta: academia.planta: pc
-# - Límites de recursos entre todos los servicios de planta: máx 4 CPUs y 8 GB de RAM
-# - Variables de proxy: HTTP_PROXY=http://enlace:3128, HTTPS_PROXY=http://enlace:3128, NO_PROXY=broker,sim,localhost,postgres
-# - Servicio de base de datos PostgreSQL 16 con pgvector (imagen pgvector/pgvector:pg16)
-
+# Servicios de la PC de planta (red planta-lan, label academia.planta=pc, límite total 4 CPUs / 8 GB RAM)
+# Presupuesto de recursos:
+#   - postgres     : 0.5 CPU / 1.0 GB RAM
+#   - sistem_agent : 1.5 CPU / 3.0 GB RAM
+#   - ollama       : 2.0 CPU / 4.0 GB RAM
+#   TOTAL          : 4.0 CPU / 8.0 GB RAM
 name: sistema
 
 services:
@@ -28,12 +27,37 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '1'
-          memory: 2G
+          cpus: '0.5'
+          memory: 1G
+
+  ollama:
+    build:
+      context: .
+      dockerfile: Dockerfile.ollama
+    networks: [planta-lan]
+    labels:
+      - academia.planta=pc
+    environment:
+      - OLLAMA_KEEP_ALIVE=10m
+      - OLLAMA_NUM_PARALLEL=1
+      - OLLAMA_MAX_LOADED_MODELS=1
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
 
   sistem_agent:
     build: .
     networks: [planta-lan]
+    ports:
+      - "8090:8090"
     labels:
       - academia.planta=pc
     environment:
@@ -45,20 +69,26 @@ services:
       - HTTP_PROXY=${PLANTA_HTTP_PROXY:-http://enlace:3128}
       - HTTPS_PROXY=${PLANTA_HTTPS_PROXY:-http://enlace:3128}
       - NO_PROXY=${PLANTA_NO_PROXY:-broker,sim,localhost,127.0.0.1,postgres,ollama,mcp,host.docker.internal,enlace}
-      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
-      - LLM_LOCAL_MODEL=${LLM_LOCAL_MODEL:-hf.co/mistralai/Ministral-3-3B-Instruct-2512-GGUF:Q4_K_M}
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://ollama:11434}
+      - LLM_LOCAL_MODEL=${LLM_LOCAL_MODEL:-qwen2.5:3b}
       - WHISPER_MODEL_SIZE=${WHISPER_MODEL_SIZE:-small}
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+      - NVIDIA_API_KEY=${NVIDIA_API_KEY:-}
+      - NVIDIA_BASE_URL=${NVIDIA_BASE_URL:-https://integrate.api.nvidia.com/v1}
+      - VLM_MODEL=${VLM_MODEL:-google/gemma-4-31b-it}
+      - VLM_FALLBACK_MODEL=${VLM_FALLBACK_MODEL:-nvidia/nemotron-3-nano-omni-30b-a3b-reasoning}
+      - NVIDIA_TIMEOUT_S=${NVIDIA_TIMEOUT_S:-25}
+      - API_UI_PORT=${API_UI_PORT:-8090}
     depends_on:
       postgres:
+        condition: service_healthy
+      ollama:
         condition: service_healthy
     restart: unless-stopped
     deploy:
       resources:
         limits:
-          cpus: '3'
-          memory: 6G
+          cpus: '1.5'
+          memory: 3G
 
 networks:
   planta-lan:
